@@ -7,6 +7,9 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # 解决 Node.js 警告
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,16 +25,44 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      # 如果gradlew在根目录
       - name: Make gradlew executable
         run: chmod +x gradlew
 
       - name: Build with Gradle
         run: ./gradlew build
 
+      # 增强的调试步骤 - 显示所有可能的构建输出位置
+      - name: Debug - Find built files
+        run: |
+          echo "=== Current directory structure ==="
+          pwd
+          ls -la
+          
+          echo "=== Looking for build directories ==="
+          find . -type d -name "build" -o -name "libs" -o -name "distributions" 2>/dev/null | head -20
+          
+          echo "=== Looking for JAR files ==="
+          find . -name "*.jar" -type f | head -20
+          
+          echo "=== Checking build/libs specifically ==="
+          if [ -d "build/libs" ]; then
+            ls -la build/libs/
+          else
+            echo "build/libs/ directory not found"
+          fi
+          
+          echo "=== Checking all subdirectories for JARs ==="
+          find . -path "*/build/*" -name "*.jar" -o -path "*/libs/*" -name "*.jar" 2>/dev/null
+
+      # 智能上传 - 尝试多个可能的路径
       - name: Upload JAR as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: thepit-jar
-          path: build/libs/*.jar
+          path: |
+            **/build/libs/*.jar
+            **/build/distributions/*.jar
+            **/libs/*.jar
+            **/*.jar
+          if-no-files-found: warn  # 如果没有文件就警告但不失败
           retention-days: 30
