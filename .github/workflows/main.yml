@@ -1,0 +1,46 @@
+name: Build Java Project with Maven
+
+# 触发条件：当代码推送到 main 或 master 分支时，或者创建针对这些分支的 PR 时
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  # 允许手动触发
+  workflow_dispatch:
+
+jobs:
+  build:
+    # 任务名称
+    name: Build and Upload JAR
+    # 运行环境
+    runs-on: ubuntu-latest
+
+    steps:
+      # 步骤1：检出你的项目代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 步骤2：设置 JDK (请将版本号替换为你项目使用的版本)
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17' # 例如 '11', '17', '21' 
+          distribution: 'temurin' # 推荐使用 Eclipse Temurin
+          cache: maven # 缓存 Maven 依赖，加速构建
+
+      # 步骤3：使用 Maven 构建项目并打包
+      - name: Build with Maven
+        run: mvn -B package --file pom.xml -DskipTests # -B 表示批处理模式，-DskipTests 跳过测试以加快速度，如有需要可去掉
+
+      # 步骤4：将生成的 JAR 文件上传为工件
+      - name: Upload JAR as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # 工件的名称，你可以随意命名
+          name: my-java-app-jar
+          # 要上传的文件路径。Maven 默认将打好的包放在 target/ 目录下
+          # 使用通配符 * 可以匹配版本号，避免写死
+          path: target/*.jar
+          # 工件保留天数，默认90天
+          retention-days: 30
