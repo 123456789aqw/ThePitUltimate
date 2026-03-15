@@ -29,40 +29,38 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: ./gradlew build
+        run: ./gradlew build shadowJar  # 明确执行 shadowJar 任务
 
-      # 增强的调试步骤 - 显示所有可能的构建输出位置
-      - name: Debug - Find built files
+      # 调试步骤 - 查看生成的 JAR 文件
+      - name: Debug - List built JARs
         run: |
-          echo "=== Current directory structure ==="
-          pwd
-          ls -la
+          echo "=== Looking for JAR files in base module ==="
+          ls -la base/build/libs/ || echo "base/build/libs/ not found"
           
-          echo "=== Looking for build directories ==="
-          find . -type d -name "build" -o -name "libs" -o -name "distributions" 2>/dev/null | head -20
+          echo "=== Looking for JAR files everywhere ==="
+          find . -name "*.jar" -type f | sort
           
-          echo "=== Looking for JAR files ==="
-          find . -name "*.jar" -type f | head -20
-          
-          echo "=== Checking build/libs specifically ==="
-          if [ -d "build/libs" ]; then
-            ls -la build/libs/
-          else
-            echo "build/libs/ directory not found"
-          fi
-          
-          echo "=== Checking all subdirectories for JARs ==="
-          find . -path "*/build/*" -name "*.jar" -o -path "*/libs/*" -name "*.jar" 2>/dev/null
+          echo "=== File sizes ==="
+          find . -name "*.jar" -type f -exec ls -lh {} \;
 
-      # 智能上传 - 尝试多个可能的路径
+      # 上传 JAR 文件 - 重点在这里
       - name: Upload JAR as Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: thepit-jar
+          name: ThePitUltimate
+          # ShadowJAR 通常生成在 base/build/libs/ 目录下
+          # 使用通配符匹配所有可能的 JAR 文件
           path: |
+            base/build/libs/*.jar
             **/build/libs/*.jar
-            **/build/distributions/*.jar
-            **/libs/*.jar
-            **/*.jar
-          if-no-files-found: warn  # 如果没有文件就警告但不失败
+          if-no-files-found: error  # 如果没有找到文件，让工作流失败
+          retention-days: 30
+
+      # 可选：如果只想上传特定的 Shadow JAR
+      - name: Upload Shadow JAR specifically
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThePitUltimate-Shadow
+          path: base/build/libs/*-all.jar  # Shadow 插件通常生成 -all.jar 文件
+          if-no-files-found: warn
           retention-days: 30
