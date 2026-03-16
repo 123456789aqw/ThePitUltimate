@@ -1,63 +1,223 @@
-// base/build.gradle
+// base/build.gradle - ThePitUltimate 核心模块
 
 plugins {
     id 'java'
+    id 'java-library'
     id 'kotlin'
-    id 'com.github.johnrengelman.shadow' version '8.1.1'  // 确保有这个插件
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
 
-// 确保所有依赖都被打包
+repositories {
+    mavenCentral()
+    maven {
+        name = "panda-lang"
+        url = "https://repo.panda-lang.org/releases/"  // 修正了路径
+    }
+    maven {
+        name = "spigotmc"
+        url = "https://hub.spigotmc.org/nexus/content/repositories/snapshots/"
+    }
+    maven {
+        name = "sonatype"
+        url = "https://oss.sonatype.org/content/repositories/snapshots"
+    }
+    maven {
+        name = "codemc"
+        url = "https://repo.codemc.io/repository/maven-public/"
+    }
+    maven {
+        name = "jitpack"
+        url = "https://jitpack.io"
+    }
+    // 添加 Kyori 官方仓库
+    maven {
+        name = "kyori"
+        url = "https://repo.kyori.net/releases/"
+    }
+}
+
+dependencies {
+    // Kotlin 标准库
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    implementation "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
+    
+    // Spigot/Bukkit API (compileOnly 因为服务器已经提供)
+    compileOnly "org.spigotmc:spigot-api:1.8.8-R0.1-SNAPSHOT"
+    
+    // 核心依赖 - 这些需要被打包进去
+    implementation "net.kyori:adventure-api:4.14.0"
+    implementation "net.kyori:adventure-platform-bukkit:4.3.2"  // 之前缺失的依赖
+    implementation "net.kyori:adventure-text-minimessage:4.14.0"
+    
+    // 工具库
+    implementation "com.google.code.gson:gson:2.10.1"
+    implementation "org.apache.commons:commons-lang3:3.12.0"
+    implementation "commons-io:commons-io:2.11.0"
+    implementation "com.google.guava:guava:31.1-jre"
+    
+    // 数据库相关
+    implementation "com.zaxxer:HikariCP:5.0.1"
+    implementation "org.mongodb:mongodb-driver-sync:4.9.0"
+    implementation "redis.clients:jedis:4.3.0"
+    
+    // 依赖注入
+    implementation "com.google.inject:guice:5.1.0"
+    
+    // 配置管理
+    implementation "org.spongepowered:configurate-yaml:4.1.2"
+    implementation "org.spongepowered:configurate-gson:4.1.2"
+    implementation "org.spongepowered:configurate-hocon:4.1.2"
+    
+    // 日志
+    implementation "org.slf4j:slf4j-simple:2.0.7"
+    
+    // 网络请求 (用于依赖下载，但我们现在打包进去了)
+    implementation "com.squareup.okhttp3:okhttp:4.11.0"
+    
+    // 注解处理
+    compileOnly "org.jetbrains:annotations:24.0.1"
+    
+    // 测试依赖
+    testImplementation "org.junit.jupiter:junit-jupiter:5.9.2"
+    testImplementation "org.mockito:mockito-core:5.3.1"
+}
+
+// Java 配置
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+// Kotlin 配置
+compileKotlin {
+    kotlinOptions {
+        jvmTarget = "1.8"
+        freeCompilerArgs += ["-Xopt-in=kotlin.RequiresOptIn"]
+    }
+}
+
+compileTestKotlin {
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+}
+
+// 处理资源文件
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    
+    from(sourceSets.main.resources.srcDirs) {
+        include 'plugin.yml'
+        include 'config.yml'
+        include 'messages.yml'
+        expand(
+            'version': project.version,
+            'name': project.rootProject.name
+        )
+    }
+}
+
+// ShadowJAR 配置 - 将所有依赖打包
 shadowJar {
     // 打包所有运行时依赖
     configurations = [project.configurations.runtimeClasspath]
     
-    // 设置打包后的 JAR 文件名
-    archiveFileName = 'ThePitUltimate.jar'
+    // 设置输出文件名
+    archiveFileName = "${project.rootProject.name}.jar"
     
-    // 合并 META-INF 服务文件（对于 SPI 很重要）
+    // 合并服务文件
     mergeServiceFiles()
     
-    // 处理重复文件
+    // 解决 SPI 冲突
+    append 'META-INF/services/**'
+    
+    // 排除签名文件
     exclude 'META-INF/*.SF'
     exclude 'META-INF/*.DSA'
     exclude 'META-INF/*.RSA'
+    
+    // 排除许可证文件
     exclude 'META-INF/LICENSE*'
     exclude 'META-INF/NOTICE*'
-    
-    // 依赖冲突时优先使用最新版本
-    append 'META-INF/services/**'
     
     // 解决 Kotlin 模块信息冲突
     exclude '**/*.kotlin_module'
     
-    // 打印打包的依赖信息
+    // 依赖冲突时重定位（如果需要）
+    relocate 'kotlin', 'base.libs.kotlin'
+    relocate 'okhttp3', 'base.libs.okhttp3'
+    relocate 'okio', 'base.libs.okio'
+    relocate 'org.slf4j', 'base.libs.slf4j'
+    
+    // 打印打包信息
     doLast {
+        println "=" * 50
         println "ShadowJAR 打包完成！"
-        println "包含的依赖库："
+        println "输出文件: ${archiveFile.get()}"
+        println "文件大小: ${archiveFile.get().asFile.length() / 1024 / 1024} MB"
+        println "包含的依赖库:"
         configurations.runtimeClasspath.each { dep ->
             println "  - ${dep.name}"
         }
+        println "=" * 50
     }
 }
 
 // 确保构建任务依赖于 shadowJar
 build.dependsOn shadowJar
 
-// 可选：禁用普通的 jar 任务，只生成 shadowJar
+// 可选：禁用普通的 jar 任务，只使用 shadowJar
 jar {
-    enabled = false  // 不生成普通的 base.jar
+    enabled = false
+    archiveFileName = "${project.rootProject.name}-base.jar"
 }
 
-// 确保所有必要的依赖都被标记为 runtimeOnly 或 implementation
-dependencies {
-    // 确保 adventure-platform-bukkit 被包含（根据之前的错误）
-    implementation 'net.kyori:adventure-platform-bukkit:4.3.2'
-    
-    // 其他依赖确保使用 implementation 而不是 compileOnly
-    // 例如：
-    // implementation 'org.apache.commons:commons-lang3:3.12.0'
-    // implementation 'com.google.guava:guava:31.1-jre'
-    
-    // 注意：如果有些依赖是 provided 级别的（比如 Bukkit API），应该保持 compileOnly
-    compileOnly 'org.spigotmc:spigot-api:1.8.8-R0.1-SNAPSHOT'
+// 打包源代码的任务（可选）
+task sourcesJar(type: Jar, dependsOn: classes) {
+    archiveClassifier = 'sources'
+    from sourceSets.main.allSource
 }
+
+// 打包文档的任务（可选）
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    archiveClassifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+// 测试配置
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
+}
+
+// 自定义任务：验证所有依赖是否被打包
+task verifyDependencies {
+    dependsOn shadowJar
+    doLast {
+        def jarFile = file("${buildDir}/libs/${project.rootProject.name}.jar")
+        if (jarFile.exists()) {
+            println "✅ JAR 文件已生成: ${jarFile}"
+            
+            // 检查是否包含 adventure-platform-bukkit
+            def containsAdventure = false
+            jarFile.eachLine { line ->
+                if (line.contains("adventure-platform-bukkit")) {
+                    containsAdventure = true
+                }
+            }
+            
+            if (containsAdventure) {
+                println "✅ adventure-platform-bukkit 已成功打包"
+            } else {
+                println "⚠️ 警告: adventure-platform-bukkit 未被打包"
+            }
+        } else {
+            println "❌ JAR 文件不存在"
+        }
+    }
+}
+
+// 执行验证
+check.dependsOn verifyDependencies
